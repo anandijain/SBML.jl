@@ -44,3 +44,51 @@ function sbml_to_sysinfo(node::EzXML.Node)
     Dict(arr)
 end
 
+"doesn't handle the `constant=Bool` attribute or units"
+function build_map(ps::Vector{EzXML.Node}, name, value)
+    names = @. Symbol(getindex(ps, name))
+    vals = @. Meta.parse(getindex(ps, value))
+    names .=> vals
+end
+
+"given a list of ezxml nodes, return the union of all unique attributes of "
+function uniquekeys(node_list)
+    isnothing(node_list) ? nothing :
+    unique(get_name.(reduce(vcat, attributes.(node_list))))
+end
+
+"create a `DataFrame`-able for the node list, returns pairs"
+function to_table(node_list)
+    isnothing(node_list) && return nothing
+    ks = uniquekeys(node_list)
+    arr = []
+    for node in node_list
+        r = []
+        for k in ks
+            x = haskey(node, k) ? node[k] : missing
+            push!(r, x)
+        end
+        push!(arr, r)
+    end
+    ks .=> eachrow(reduce(hcat, arr))
+end
+
+
+get_name(n::EzXML.Node) = n.name
+
+# function build_tables(fn)
+#     ts = Dict()
+#     sysinfo = sbml_to_sysinfo(fn)
+#     for (k, v) in sysinfo
+#         @show k v
+#         t = isnothing(v) ? to_table(v) : nothing   
+#         ts[k] = t
+#     end
+#     ts
+# end
+
+"create a dataframe for the node list"
+function f(x)
+    isnothing(x) && return nothing
+    2x
+end

@@ -55,3 +55,8 @@
    </model>
 </sbml>
 ```
+
+## todo 
+   * namespacing 
+   * reaction parsing
+   * 

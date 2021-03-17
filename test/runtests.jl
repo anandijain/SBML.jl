@@ -2,6 +2,6 @@ using SBML
 using Test
 
 @testset "SBML.jl" begin
-    # Write your tests here.
-    include("test.jl")
+    # @testset "suite" begin include("test.jl") end
+    @testset "data" begin include("data.jl") end
 end
