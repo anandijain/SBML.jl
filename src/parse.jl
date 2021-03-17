@@ -73,7 +73,6 @@ function to_table(node_list)
     ks .=> eachrow(reduce(hcat, arr))
 end
 
-
 get_name(n::EzXML.Node) = n.name
 
 # function build_tables(fn)
@@ -87,8 +86,9 @@ get_name(n::EzXML.Node) = n.name
 #     ts
 # end
 
-"create a dataframe for the node list"
-function f(x)
-    isnothing(x) && return nothing
-    2x
+function make_nice(d)
+    ks, vs = keys(d), values(d)
+    ts = to_table.(values(d))
+    td = Dict(ks .=> ts)
+    filter(x -> !isnothing(x.second), td)
 end
