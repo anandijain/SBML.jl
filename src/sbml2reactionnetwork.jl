@@ -6,8 +6,8 @@ mutable struct SbmlModel
     pars::Dict{Num,Float64}  # Dict(parameter=>value, ...)
     comps::Array{Num}  # [nucleus,cytoplasm,...]
     spec::Dict{Num,Tuple{Float64,Num}}  # Dict(specie=>(u0,compartment), ...)
-    rxs::Array{Num,tuple{SymbolicUtils.Add,Array{Num},Array{Num},Array{Int},Array{Int}}} 
-         # [(massactionrateconstant,fullkineticlaw,[subtrate,...],[product,...],[substoich,...],[prodstoich,...]),...]
+    rxs::Array{Num,tuple{SymbolicUtils.Add,Array{Num},Array{Int},Array{Int}}} 
+         # [(fullkineticlaw,[subtrate,...],[product,...],[substoich,...],[prodstoich,...]),...]
     ## Future components
     # maybe add fields to store info about events, piecewise simulation, etc.
     function SbmlModel()
@@ -32,12 +32,44 @@ function process_doc(doc)
     cm = build_map(d["listOfCompartments"], "id", "size")
 
     spec = build_map(d["listOfSpecies"], "id", "initialAmount", "compartment")
-
+    reactions = build_reactions(d["listOfReactions"])
     # Todo: Reaction
 
 end
 
+function build_reactions(ps::Vector{EzXML.Node})
+    reactions = []
+    for reaction in ps
+        reactants, r_stoich = _getlistofspeciesreference(reaction,"Reactant")
+        products, p_stoich = _getlistofspeciesreference(reaction,"Product")
+        kineticlaw = getkineticlaw(reaction)
+        kineticlaw = parse_node(kineticlaw)
+        thisreaction = (kineticlaw,reactants,products,r_stoich,p_stoich)
+        append!(reactions,thisreaction)
+    end
+end
 
+function _getlistofspeciesreference(reaction::EzXML.Node,type,name)
+    if nodename(reaction) != "reaction"
+        @error("Input node must be a reaction but is $(nodename(reaction)).")
+    end
+    listnodes = [node for node in eachelement(reaction) if nodename(node) == "listOf$(type)s"]
+    if length(listnodes) > 1
+        @error("SBML files with reactions with more than one listOf$(type)s are not supported.")
+    end
+    listnode = listnodes[1]
+    spec = [Symbol(getindex(node, "id")) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    stoich = [getindex(node, "stoichiometry")) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    (spec, stoich)
+end
+
+function getkineticlaw(reaction::EzXML.Node)
+    kineticlaws = [node for node in eachelement(reaction) if nodename(node) == "kineticLaw"]
+    if length(kineticlaws) > 1
+        @error("Reactions with more than one kinticLaw are not supported.")
+    end
+    kineticlaw = kineticlaws[1]
+end
 
 function build_map(ps::Vector{EzXML.Node}, name, values...)
     names = @. Symbol(getindex(ps, name))
