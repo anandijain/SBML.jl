@@ -3,21 +3,13 @@
 
 mutable struct SbmlModel
     # Basic Functionality
-    pars::Dict{Num,Float64}  # Dict(parameter=>value, ...)
-    comps::Array{Num}  # [nucleus,cytoplasm,...]
-    spec::Dict{Num,Tuple{Float64,Num}}  # Dict(specie=>(u0,compartment), ...)
+    pars::Array{Pair{Sym,Float64}}  # [parameter=>value, ...]
+    comps::Array{Pair{Sym,Float64}}  # [nucleus=>1.0,cytoplasm=>2.0,...]
+    spec::Array{Num,Tuple{Float64,Num}}  # [specie=>(u0,compartment), ...]
     rxs::Array{Num,tuple{SymbolicUtils.Add,Array{Num},Array{Int},Array{Int}}} 
          # [(fullkineticlaw,[subtrate,...],[product,...],[substoich,...],[prodstoich,...]),...]
     ## Future components
     # maybe add fields to store info about events, piecewise simulation, etc.
-    function SbmlModel()
-        return new(
-            Dict(),
-            Array
-            Dict{String,T}(),
-            []
-        )
-    end
 end
 SbmlModel(doc::XMLDocument) = process_doc(doc)
 
@@ -33,8 +25,7 @@ function process_doc(doc)
 
     spec = build_map(d["listOfSpecies"], "id", "initialAmount", "compartment")
     reactions = build_reactions(d["listOfReactions"])
-    # Todo: Reaction
-
+    SbmlModel(pars,comps,spec,rxs)
 end
 
 function build_reactions(ps::Vector{EzXML.Node})
