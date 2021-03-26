@@ -40,7 +40,7 @@ function sbml_to_sysinfo(node::EzXML.Node)
         str = "/x:sbml/x:model/x:$(list_name)"
         l = findall(str, node, ["x" => ns])
         #use children or elements?
-        ls = !isempty(l) ? mapreduce(elements, vcat, l) : nothing
+        ls = !isempty(l) ? mapreduce(elements, vcat, l) : EzXML.Node[]
         push!(arr, list_name => ls)
     end
     Dict(arr)

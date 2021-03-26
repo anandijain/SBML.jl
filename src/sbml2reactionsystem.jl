@@ -24,9 +24,9 @@ function _process_doc(doc)
                 sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfLocalParameters"])
     pars = build_par_map(pars)
 
-    comps = build_comp_map(sysinfo["listOfCompartments"], "id", "size")
+    comps = build_comp_map(sysinfo["listOfCompartments"])
 
-    spec = build_spec_map(sysinfo["listOfSpecies"], "id", "initialAmount", "compartment")
+    spec = build_spec_map(sysinfo["listOfSpecies"])
     reactions = build_reactions(sysinfo["listOfReactions"])
     SbmlModel(pars,comps,spec,reactions)
 end
