@@ -11,38 +11,47 @@ mutable struct SbmlModel
     ## Future components
     # maybe add fields to store info about events, piecewise simulation, conversionFactors etc.
 end
-# SbmlModel(doc::EzXML.Document) = _process_doc(doc)
+SbmlModel(file::String) = SbmlModel(readxml(file))
+SbmlModel(doc::EzXML.Document) = _process_doc(doc)
 
 
 function _process_doc(doc)
-    doc = make_extensive(doc)
+    # doc = make_extensive(doc)
     doc = promotelocalparameters(doc)
-    d = sbml_to_sysinfo(doc)
-    globalpars = build_map(d["listOfParameters"], "id", "value")
-    localpars1 = build_map(d["listOfReactions/x:reaction/x:listOfParameters"], "id", "value")
-    localpars2 = build_map(d["listOfReactions/x:reaction/x:listOfParameters"], "id", "value")
-    pars = vcat(globalpars, localpars1, localpars2)
+    sysinfo = sbml_to_sysinfo(doc)
+    pars = vcat(sysinfo["listOfParameters"],
+                sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfParameters"],
+                sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfLocalParameters"])
+    pars = build_par_map(pars)
 
-    cm = build_map(d["listOfCompartments"], "id", "size")
+    comps = build_comp_map(sysinfo["listOfCompartments"], "id", "size")
 
-    spec = build_map(d["listOfSpecies"], "id", "initialAmount", "compartment")
-    reactions = build_reactions(d["listOfReactions"])
-    SbmlModel(pars,comps,spec,rxs)
+    spec = build_spec_map(sysinfo["listOfSpecies"], "id", "initialAmount", "compartment")
+    reactions = build_reactions(sysinfo["listOfReactions"])
+    SbmlModel(pars,comps,spec,reactions)
 end
 
-function build_reactions(ps::Vector{EzXML.Node})
-    reactions = []
-    for reaction in ps
+function build_reactions(listofreactions::Vector{EzXML.Node})
+    reactions = Tuple{Num,Array{Num,1},Array{Num,1},Array{Int64,1},Array{Int64,1}}[]
+    for reaction in listofreactions
         reactants, r_stoich = _getlistofspeciesreference(reaction,"Reactant")
         products, p_stoich = _getlistofspeciesreference(reaction,"Product")
         kineticlaw = getkineticlaw(reaction)
-        kineticlaw = parse_node(kineticlaw)
-        thisreaction = (kineticlaw,reactants,products,r_stoich,p_stoich)
+        kineticlaw = parse_node(getmath(kineticlaw))[1]
+        println(typeof(reactants))
+        println(typeof(r_stoich))
+        println(typeof(products))
+        println(typeof(p_stoich))
+        println(typeof(kineticlaw))
+        thisreaction = [Tuple{Num,Array{Num,1},Array{Num,1},Array{Int64,1},Array{Int64,1}}((kineticlaw,reactants,products,r_stoich,p_stoich))]
+        println(typeof(reactions))
+        println(typeof(thisreaction))
         append!(reactions,thisreaction)
     end
+    reactions
 end
 
-function _getlistofspeciesreference(reaction::EzXML.Node,type,name)
+function _getlistofspeciesreference(reaction::EzXML.Node,type)
     if nodename(reaction) != "reaction"
         @error("Input node must be a reaction but is $(nodename(reaction)).")
     end
@@ -51,8 +60,8 @@ function _getlistofspeciesreference(reaction::EzXML.Node,type,name)
         @error("SBML files with reactions with more than one listOf$(type)s are not supported.")
     end
     listnode = listnodes[1]
-    spec = [Num(Variable(Symbol(getindex(node, "id")))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
-    stoich = [getindex(node, "stoichiometry") for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    spec = [Num(Variable{Float64}(Symbol(getindex(node, "species")))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    stoich = [Int(Meta.parse(getindex(node, "stoichiometry"))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
     (spec, stoich)
 end
 
@@ -62,6 +71,14 @@ function getkineticlaw(reaction::EzXML.Node)
         @error("Reactions with more than one kinticLaw are not supported.")
     end
     kineticlaw = kineticlaws[1]
+end
+
+function getmath(kineticlaw::EzXML.Node)
+    maths = [node for node in eachelement(kineticlaw) if nodename(node) == "math"]
+    if length(maths) > 1
+        @error("kineticLaws with more than one math node are not supported.")
+    end
+    math = maths[1]
 end
 
 function build_par_map(parnodes::Vector{EzXML.Node})
@@ -83,9 +100,26 @@ function build_spec_map(compnodes::Vector{EzXML.Node})
     ids .=> tuple.(inits,comps)
 end
 
-function expand_reversible(doc::EzXML.Node)
-    x = 1
-end
+#=function expand_reversible(doc::EzXML.Node)
+    doc = deepcopy(doc)
+    root = doc.root
+    ns = namespace(root)
+    reactions = findall("//x:reaction", root, ["x"=>ns])
+    for reaction in reactions
+        kineticlaws = [node for node in eachelement(reaction) if nodename(node) == "kineticLaw"]
+        if length(kineticlaws) > 1
+            @error("SBML reactions with more than one kinetic law are not supported.")
+        end
+        kineticlaw = kineticlaws[1]
+        locallistsofparameters = [node for node in eachelement(kineticlaw) if occursin("Parameters",nodename(node))]
+        locallistofparameters = [node for list in locallistsofparameters for node in eachelement(list)]            
+        for par in locallistofparameters
+            par["id"] = reaction["id"]*"_"*par["id"]
+            par["name"] = reaction["name"]*"_"*par["name"]
+        end
+    end
+    doc
+end=#
 
 function promotelocalparameters(doc::EzXML.Document)
     doc = deepcopy(doc)
