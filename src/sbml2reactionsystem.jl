@@ -3,23 +3,25 @@
 
 mutable struct SbmlModel
     # Basic Functionality
-    pars::Array{Pair{Sym,Float64}}  # [parameter=>value, ...]
-    comps::Array{Pair{Sym,Float64}}  # [nucleus=>1.0,cytoplasm=>2.0,...]
-    spec::Array{Num,Tuple{Float64,Num}}  # [specie=>(u0,compartment), ...]
-    rxs::Array{Num,tuple{SymbolicUtils.Add,Array{Num},Array{Int},Array{Int}}} 
+    parameters#::Array{Pair{Variable,Float64}}  # [parameter=>value, ...]
+    compartments#::Array{Pair{Variable,Float64}}  # [nucleus=>1.0,cytoplasm=>2.0,...]
+    species#::Array{Pair{Variable,Tuple{Float64,Variable}}}  # [specie=>(u0,compartment), ...]
+    reactions#::Array{tuple{SymbolicUtils.Add,Array{Variable},Array{Variable},Array{Int},Array{Int}}} 
          # [(fullkineticlaw,[subtrate,...],[product,...],[substoich,...],[prodstoich,...]),...]
     ## Future components
-    # maybe add fields to store info about events, piecewise simulation, etc.
+    # maybe add fields to store info about events, piecewise simulation, conversionFactors etc.
 end
-SbmlModel(doc::XMLDocument) = process_doc(doc)
+# SbmlModel(doc::EzXML.Document) = _process_doc(doc)
 
-function process_doc(doc)
+
+function _process_doc(doc)
     doc = make_extensive(doc)
     doc = promotelocalparameters(doc)
     d = sbml_to_sysinfo(doc)
     globalpars = build_map(d["listOfParameters"], "id", "value")
-    localpars = build_map(d["listOfLocalParameters"], "id", "value")
-    pars = append!(globalpars, localpars)
+    localpars1 = build_map(d["listOfReactions/x:reaction/x:listOfParameters"], "id", "value")
+    localpars2 = build_map(d["listOfReactions/x:reaction/x:listOfParameters"], "id", "value")
+    pars = vcat(globalpars, localpars1, localpars2)
 
     cm = build_map(d["listOfCompartments"], "id", "size")
 
@@ -49,8 +51,8 @@ function _getlistofspeciesreference(reaction::EzXML.Node,type,name)
         @error("SBML files with reactions with more than one listOf$(type)s are not supported.")
     end
     listnode = listnodes[1]
-    spec = [Symbol(getindex(node, "id")) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
-    stoich = [getindex(node, "stoichiometry")) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    spec = [Num(Variable(Symbol(getindex(node, "id")))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    stoich = [getindex(node, "stoichiometry") for node in eachelement(listnode) if nodename(node) == "speciesReference"]
     (spec, stoich)
 end
 
@@ -62,17 +64,34 @@ function getkineticlaw(reaction::EzXML.Node)
     kineticlaw = kineticlaws[1]
 end
 
-function build_map(ps::Vector{EzXML.Node}, name, values...)
-    names = @. Symbol(getindex(ps, name))
-    vals = (@. Meta.parse(getindex(ps, value)) for value in values...)
-    names .=> vals
+function build_par_map(parnodes::Vector{EzXML.Node})
+    ids = @. Num(Variable{Float64}(Symbol(getindex(parnodes, "id"))))
+    vals = @. Float64(Meta.parse(getindex(parnodes, "value")))
+    ids .=> vals
 end
 
+function build_comp_map(compnodes::Vector{EzXML.Node})
+    ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
+    sizes = @. Float64(Meta.parse(getindex(compnodes, "size")))
+    ids .=> sizes
+end
 
-function promotelocalparameters(doc::EzXML.Node)
+function build_spec_map(compnodes::Vector{EzXML.Node})
+    ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
+    inits = @. Float64(Meta.parse(getindex(compnodes, "initialAmount")))
+    comps = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "compartment"))))
+    ids .=> tuple.(inits,comps)
+end
+
+function expand_reversible(doc::EzXML.Node)
+    x = 1
+end
+
+function promotelocalparameters(doc::EzXML.Document)
     doc = deepcopy(doc)
-    ns = namespace(doc)
-    reactions = findall("//x:reaction", model, ["x"=>ns])
+    root = doc.root
+    ns = namespace(root)
+    reactions = findall("//x:reaction", root, ["x"=>ns])
     for reaction in reactions
         kineticlaws = [node for node in eachelement(reaction) if nodename(node) == "kineticLaw"]
         if length(kineticlaws) > 1
@@ -83,6 +102,8 @@ function promotelocalparameters(doc::EzXML.Node)
         locallistofparameters = [node for list in locallistsofparameters for node in eachelement(list)]            
         for par in locallistofparameters
             par["id"] = reaction["id"]*"_"*par["id"]
+            par["name"] = reaction["name"]*"_"*par["name"]
         end
+    end
     doc
 end

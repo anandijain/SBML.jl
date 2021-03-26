@@ -7,7 +7,8 @@ const sbml_lists = [
 "listOfCompartments",
 "listOfSpecies",
 "listOfParameters",
-"listOfLocalParameters",
+"listOfReactions/x:reaction/x:listOfParameters",
+"listOfReactions/x:reaction/x:listOfLocalParameters",
 "listOfInitialAssignments",
 "listOfRules",
 "listOfConstraints",
@@ -36,7 +37,7 @@ function sbml_to_sysinfo(node::EzXML.Node)
     node.name != "sbml" && error("give an sbml node")
     arr = []
     for list_name in sbml_lists 
-        str = "//x:$(list_name)"
+        str = "/x:sbml/x:model/x:$(list_name)"
         l = findall(str, node, ["x" => ns])
         #use children or elements?
         ls = !isempty(l) ? mapreduce(elements, vcat, l) : nothing
@@ -45,19 +46,19 @@ function sbml_to_sysinfo(node::EzXML.Node)
     Dict(arr)
 end
 
-function sbml_to_sysinfo(node::EzXML.Node,promotelocalparameters=true)
+#=function sbml_to_sysinfo(node::EzXML.Node,promotelocalparameters::Bool)
     ns = namespace(node) # will this always work
     node.name != "sbml" && error("give an sbml node")
     arr = []
     for list_name in sbml_lists 
-        str = "//x:$(list_name)"
+        str = "/x:$(list_name)"
         l = findall(str, node, ["x" => ns])
         #use children or elements?
         ls = !isempty(l) ? mapreduce(elements, vcat, l) : nothing
         push!(arr, list_name => ls)
     end
     Dict(arr)
-end
+end=#
 
 "doesn't handle the `constant=Bool` attribute or units"
 function build_map(ps::Vector{EzXML.Node}, name, value)
