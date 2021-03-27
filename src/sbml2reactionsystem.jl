@@ -39,14 +39,7 @@ function build_reactions(listofreactions::Vector{EzXML.Node})
         products, p_stoich = _getlistofspeciesreference(reaction,"Product")
         kineticlaw = getkineticlaw(reaction)
         kineticlaw = parse_node(getmath(kineticlaw))[1]
-        println(typeof(reactants))
-        println(typeof(r_stoich))
-        println(typeof(products))
-        println(typeof(p_stoich))
-        println(typeof(kineticlaw))
         thisreaction = [Tuple{Num,Array{Num,1},Array{Num,1},Array{Int64,1},Array{Int64,1}}((kineticlaw,reactants,products,r_stoich,p_stoich))]
-        println(typeof(reactions))
-        println(typeof(thisreaction))
         append!(reactions,thisreaction)
     end
     reactions
@@ -148,4 +141,40 @@ function promotelocalparameters(doc::EzXML.Document)
         end
     end
     doc
+end
+
+""" ReactionSystem constructor """
+function ModelingToolkit.ReactionSystem(sbmlmodel::SbmlModel)
+    rxs = [Reaction(reac...; use_only_rate=true) for reac in sbmlmodel.reactions]
+    t = Num(Variable{Float64}(:t))
+    species = [spec.first for spec in sbmlmodel.species]
+    pc = append!(sbmlmodel.parameters,sbmlmodel.compartments)
+    params = [par.first for par in pc]
+    ReactionSystem(rxs,t,species,params)
+end
+
+""" ReactionSystem constructor """
+function ModelingToolkit.ReactionSystem(sbmldocument::EzXML.Document)
+    sbmlmodel = SbmlModel(sbmldocument)
+    ReactionSystem(sbmlmodel)
+end
+
+""" ReactionSystem constructor """
+function ModelingToolkit.ReactionSystem(sbmlfile::String)
+    sbmlmodel = SbmlModel(sbmlfile)
+    ReactionSystem(sbmlmodel)
+end
+
+""" ODESystem constructor """
+function ModelingToolkit.ODESystem(sbmlmodel::SbmlModel)
+    rs = ReactionSystem(sbmlmodel)
+    odesys = convert(ODESystem, rs)
+end
+
+""" ODEProblem constructor """
+function ModelingToolkit.ODEProblem(sbmlmodel::SbmlModel,tspan)
+    odesys = ODESystem(sbmlmodel)
+    u0map = [s.first => s.second[1] for s in sbmlmodel.species]
+    parammap = append!(sbmlmodel.parameters,sbmlmodel.compartments)
+    ODEProblem(odesys, u0map, tspan, parammap)
 end
