@@ -14,7 +14,7 @@ end
 SbmlModel(file::String) = SbmlModel(readxml(file))
 SbmlModel(doc::EzXML.Document) = _process_doc(doc)
 
-
+""" Convert SBML document into SbmlModel """
 function _process_doc(doc)
     # doc = make_extensive(doc)
     doc = promotelocalparameters(doc)
@@ -31,6 +31,7 @@ function _process_doc(doc)
     SbmlModel(pars,comps,spec,reactions)
 end
 
+""" Extract kineticLaws, Reactants, Products and their stoichiometry from SBML """
 function build_reactions(listofreactions::Vector{EzXML.Node})
     reactions = Tuple{Num,Array{Num,1},Array{Num,1},Array{Int64,1},Array{Int64,1}}[]
     for reaction in listofreactions
@@ -51,6 +52,7 @@ function build_reactions(listofreactions::Vector{EzXML.Node})
     reactions
 end
 
+""" Extract species and their stroichiometry from an SBML reaction """
 function _getlistofspeciesreference(reaction::EzXML.Node,type)
     if nodename(reaction) != "reaction"
         @error("Input node must be a reaction but is $(nodename(reaction)).")
@@ -65,6 +67,7 @@ function _getlistofspeciesreference(reaction::EzXML.Node,type)
     (spec, stoich)
 end
 
+""" Extract kineticLaw node from an SBML reaction """
 function getkineticlaw(reaction::EzXML.Node)
     kineticlaws = [node for node in eachelement(reaction) if nodename(node) == "kineticLaw"]
     if length(kineticlaws) > 1
@@ -73,6 +76,7 @@ function getkineticlaw(reaction::EzXML.Node)
     kineticlaw = kineticlaws[1]
 end
 
+""" Extract math node from an SBML kineticLaw """
 function getmath(kineticlaw::EzXML.Node)
     maths = [node for node in eachelement(kineticlaw) if nodename(node) == "math"]
     if length(maths) > 1
@@ -81,18 +85,21 @@ function getmath(kineticlaw::EzXML.Node)
     math = maths[1]
 end
 
+""" Extract parameters from SBML """
 function build_par_map(parnodes::Vector{EzXML.Node})
     ids = @. Num(Variable{Float64}(Symbol(getindex(parnodes, "id"))))
     vals = @. Float64(Meta.parse(getindex(parnodes, "value")))
     ids .=> vals
 end
 
+""" Extract compartments from SBML """
 function build_comp_map(compnodes::Vector{EzXML.Node})
     ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
     sizes = @. Float64(Meta.parse(getindex(compnodes, "size")))
     ids .=> sizes
 end
 
+""" Extract species from SBML """
 function build_spec_map(compnodes::Vector{EzXML.Node})
     ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
     inits = @. Float64(Meta.parse(getindex(compnodes, "initialAmount")))
@@ -121,6 +128,7 @@ end
     doc
 end=#
 
+""" Assign gloablly unique ids to local parameters """
 function promotelocalparameters(doc::EzXML.Document)
     doc = deepcopy(doc)
     root = doc.root
