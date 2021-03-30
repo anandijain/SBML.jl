@@ -63,6 +63,8 @@ model = SBML._process_doc(readxml(SBML_FILE))
 @test isequal(model.parameters, [k1 => 0.8, ConvA_k2 => 0.6])
 @test isequal(model.compartments, truecompmap)
 @test isequal(model.species, truespecmap)
+kineticlaw = comp1*(A*k1 - (B*ConvA_k2))
+truereactions = [(kineticlaw,[A],[B],[1],[1])]
 @test isequal(model.reactions, truereactions)
 
 # test _mathml_substitutions
@@ -79,7 +81,7 @@ subs = SBML._par_subs(SYSDICT["listOfParameters"])
 # test ReactionSystem
 model = SbmlModel([k1=>1.],[comp1=>1.],[A=>1.],[(comp1*k1*A, [A], nothing)])
 rs = ReactionSystem(model)
-# @test isequal(rs.eqs, Reaction[Reaction(comp1*k1*A, [A], nothing; use_only_rate=true)])
+@test isequal(rs.eqs, Reaction[Reaction(comp1*k1*A, [A], nothing; use_only_rate=true)])
 @test isequal(rs.iv, Variable(:t))
 @test isequal(rs.states, [A])
 @test isequal(rs.ps, [k1,comp1])
@@ -93,7 +95,7 @@ rs = ReactionSystem(model)
 
 model = SbmlModel(SBML_FILE)
 rs = ReactionSystem(model)
-# @test isequal(rs.eqs, Reaction[Reaction(comp1*(k1*A - (ConvA_k2*B)), [A], [B]; use_only_rate=true)])
+@test isequal(rs.eqs, Reaction[Reaction(comp1*(k1*A - (ConvA_k2*B)), [A], [B]; use_only_rate=true)])
 @test isequal(rs.iv, Variable(:t))
 @test isequal(rs.states, [A, B])
 @test isequal(rs.ps, [k1,ConvA_k2,comp1])
@@ -118,8 +120,8 @@ comp1 = Num(Variable(:comp1))
 
 #=DATA = "./test/data"
 SBML_FILE = joinpath(DATA, "case01.xml")
-DOC = readxml(SBML_FILE)
-node = DOC.root
+SBML_DOC = readxml(SBML_FILE)
+node = SBML_DOC.root
 ns = namespace(node)
 list_name = "listOfParameters"
 list_name = "listOfReactions/x:reaction/x:kineticLaw/x:listOfParameters"

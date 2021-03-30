@@ -1,4 +1,5 @@
 using SBML
+using Catalyst
 using EzXML
 using MathML
 using ModelingToolkit
