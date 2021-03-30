@@ -3,11 +3,12 @@ SBML_FILE = joinpath(DATA, "case01.xml")
 SBML_DOC = readxml(SBML_FILE)
 SYSDICT = sbml_to_sysinfo(SBML_FILE)
 
-A = Num(Variable{Float64}(:A))
-B = Num(Variable{Float64}(:B))
-k1 = Num(Variable{Float64}(:k1))
-ConvA_k2 = Num(Variable{Float64}(:ConvA_k2))
-comp1 = Num(Variable{Float64}(:comp1))
+A = Num(Variable(:A))
+B = Num(Variable(:B))
+k1 = Num(Sym{ModelingToolkit.Parameter{Real}}(:k1))
+k2 = Num(Sym{ModelingToolkit.Parameter{Real}}(:k2))
+ConvA_k2 = Num(Sym{ModelingToolkit.Parameter{Real}}(:ConvA_k2))
+comp1 = Num(Sym{ModelingToolkit.Parameter{Real}}(:comp1))
 
 # test build_par_map
 trueparmap = [k1 => 0.8]
@@ -49,48 +50,70 @@ products, p_stoich = SBML._getlistofspeciesreference(reaction,"Product")
 @test isequal(p_stoich, [1])
 
 # test build_reactions()
-reactions = build_reactions([reaction])
-kineticlaw = comp1*(A*k1 - (B*ConvA_k2))
+truesubs = Dict(Num(Variable(:comp1)) => Num(Sym{ModelingToolkit.Parameter{Real}}(:comp1)),
+                Num(Variable(:k1)) => Num(Sym{ModelingToolkit.Parameter{Real}}(:k1)),
+                Num(Variable(:k2)) => Num(Sym{ModelingToolkit.Parameter{Real}}(:k2)))
+reactions = build_reactions([reaction],truesubs)
+kineticlaw = comp1*(A*k1 - (B*k2))
 truereactions = [(kineticlaw,[A],[B],[1],[1])]
-# @test isequal(reactions[1][1],truereactions[1][1])
+@test isequal(reactions[1][1],truereactions[1][1])
 
 # test _process_doc
 model = SBML._process_doc(readxml(SBML_FILE))
 @test isequal(model.parameters, [k1 => 0.8, ConvA_k2 => 0.6])
 @test isequal(model.compartments, truecompmap)
 @test isequal(model.species, truespecmap)
-# @test isequal(model.reactions, truereactions)
+@test isequal(model.reactions, truereactions)
+
+# test _mathml_substitutions
+subs = SBML._mathml_substitutions(SYSDICT)
+@test isequal(subs, truesubs)
+
+# test _par_subs
+truesubs = [Num(Variable(:k1)) => Num(Sym{ModelingToolkit.Parameter{Real}}(:k1))]
+subs = SBML._par_subs(SYSDICT["listOfParameters"])
+@test isequal(subs, truesubs)
+
+# test _var_subs
 
 # test ReactionSystem
 model = SbmlModel([k1=>1.],[comp1=>1.],[A=>1.],[(comp1*k1*A, [A], nothing)])
 rs = ReactionSystem(model)
 # @test isequal(rs.eqs, Reaction[Reaction(comp1*k1*A, [A], nothing; use_only_rate=true)])
-@test isequal(rs.iv, Num(Variable{Float64}(:t)))
+@test isequal(rs.iv, Variable(:t))
 @test isequal(rs.states, [A])
 @test isequal(rs.ps, [k1,comp1])
 
 model = SbmlModel(SBML_DOC)
 rs = ReactionSystem(model)
-# @test isequal(rs.eqs, Reaction[Reaction(comp1*(k1*A - (ConvA_k2*B)), [A], [B]; use_only_rate=true)])
-@test isequal(rs.iv, Num(Variable{Float64}(:t)))
+@test isequal(rs.eqs, Reaction[Reaction(comp1*(k1*A - (ConvA_k2*B)), [A], [B]; use_only_rate=true)])
+@test isequal(rs.iv, Variable(:t))
 @test isequal(rs.states, [A, B])
 @test isequal(rs.ps, [k1,ConvA_k2,comp1])
 
 model = SbmlModel(SBML_FILE)
 rs = ReactionSystem(model)
 # @test isequal(rs.eqs, Reaction[Reaction(comp1*(k1*A - (ConvA_k2*B)), [A], [B]; use_only_rate=true)])
-@test isequal(rs.iv, Num(Variable{Float64}(:t)))
+@test isequal(rs.iv, Variable(:t))
 @test isequal(rs.states, [A, B])
 @test isequal(rs.ps, [k1,ConvA_k2,comp1])
 
-# test
-odesys = ODESystem(model)
+# test ODESystem
+odesys = ODESystem(model)  # Todo: Add test cases
 
-# test
-k2 = Num(Variable{Float64}(:k2))
+# test ODEProblem
 oprob = ODEProblem(model, [0., 1.])
-sol = solve(oprob, Tsit5())
-println(sol)
+sol = solve(oprob, Tsit5())  # Todo: Add test cases
+
+# test _substitute_par!
+doc = deepcopy(SBML_DOC)
+kineticlaw = findfirst("//x:kineticLaw", doc.root, ["x"=>namespace(doc.root)])
+SBML._substitute_par!(kineticlaw, "k2", "ConvA")
+k1 = Num(Variable(:k1))
+ConvA_k2 = Num(Variable(:ConvA_k2))
+comp1 = Num(Variable(:comp1))
+@test isequal(parse_node(firstelement(kineticlaw))[1], comp1*(k1*A - (ConvA_k2*B)))
+
 
 
 #=DATA = "./test/data"

@@ -14,6 +14,12 @@ end
 SbmlModel(file::String) = SbmlModel(readxml(file))
 SbmlModel(doc::EzXML.Document) = _process_doc(doc)
 
+create_var(x) = Num(Variable(Symbol(x)))
+# create_var(x, iv) = Num(Sym{FnType{Tuple{Real}}}(Symbol(x))(Variable(Symbol(iv)))).val
+# create_var(x, iv) = Num(Variable{Symbolics.FnType{Tuple{Any},Real}}(Symbol(x)))(Variable(Symbol(iv)))
+create_param(x) = Num(Sym{ModelingToolkit.Parameter{Real}}(Symbol(x)))
+
+
 """ Convert SBML document into SbmlModel """
 function _process_doc(doc)
     # doc = make_extensive(doc)
@@ -23,22 +29,48 @@ function _process_doc(doc)
                 sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfParameters"],
                 sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfLocalParameters"])
     pars = build_par_map(pars)
-
     comps = build_comp_map(sysinfo["listOfCompartments"])
-
     spec = build_spec_map(sysinfo["listOfSpecies"])
-    reactions = build_reactions(sysinfo["listOfReactions"])
+    substitutions = _mathml_substitutions(sysinfo)
+    reactions = build_reactions(sysinfo["listOfReactions"], substitutions)
     SbmlModel(pars,comps,spec,reactions)
 end
 
+function _mathml_substitutions(sysinfo)
+    pars = vcat(sysinfo["listOfCompartments"],
+                sysinfo["listOfParameters"],
+                sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfParameters"],
+                sysinfo["listOfReactions/x:reaction/x:kineticLaw/x:listOfLocalParameters"])
+    vars = sysinfo["listOfSpecies"]
+    par_subs = _par_subs(pars)
+    # var_subs = _var_subs(vars)
+    Dict(par_subs)
+end
+
+
+function _par_subs(nodes)
+    mathml = @. create_var(getindex(nodes, "id"))
+    sbmlmodel = @. create_param(getindex(nodes, "id"))
+    mathml .=> sbmlmodel
+end
+
+
+#=function _var_subs(nodes)
+    mathml = @. Num(Variable(Symbol(getindex(nodes, "id"))))
+    sbmlmodel = @. Num(Sym{ModelingToolkit.Parameter{Real}}(Symbol(getindex(nodes, "id"))))
+    mathml .=> sbmlmodel
+end=#
+
+
 """ Extract kineticLaws, Reactants, Products and their stoichiometry from SBML """
-function build_reactions(listofreactions::Vector{EzXML.Node})
+function build_reactions(listofreactions::Vector{EzXML.Node}, substitutions)
     reactions = Tuple{Num,Array{Num,1},Array{Num,1},Array{Int64,1},Array{Int64,1}}[]
     for reaction in listofreactions
         reactants, r_stoich = _getlistofspeciesreference(reaction,"Reactant")
         products, p_stoich = _getlistofspeciesreference(reaction,"Product")
         kineticlaw = getkineticlaw(reaction)
         kineticlaw = parse_node(getmath(kineticlaw))[1]
+        kineticlaw = substitute(kineticlaw, substitutions)
         thisreaction = [Tuple{Num,Array{Num,1},Array{Num,1},Array{Int64,1},Array{Int64,1}}((kineticlaw,reactants,products,r_stoich,p_stoich))]
         append!(reactions,thisreaction)
     end
@@ -55,7 +87,7 @@ function _getlistofspeciesreference(reaction::EzXML.Node,type)
         @error("SBML files with reactions with more than one listOf$(type)s are not supported.")
     end
     listnode = listnodes[1]
-    spec = [Num(Variable{Float64}(Symbol(getindex(node, "species")))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
+    spec = [create_var(getindex(node, "species")) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
     stoich = [Int(Meta.parse(getindex(node, "stoichiometry"))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
     (spec, stoich)
 end
@@ -80,23 +112,24 @@ end
 
 """ Extract parameters from SBML """
 function build_par_map(parnodes::Vector{EzXML.Node})
-    ids = @. Num(Variable{Float64}(Symbol(getindex(parnodes, "id"))))
+    ids = @. create_param(getindex(parnodes, "id"))
     vals = @. Float64(Meta.parse(getindex(parnodes, "value")))
     ids .=> vals
 end
 
 """ Extract compartments from SBML """
 function build_comp_map(compnodes::Vector{EzXML.Node})
-    ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
+    ids = @. create_param(getindex(compnodes, "id"))
     sizes = @. Float64(Meta.parse(getindex(compnodes, "size")))
     ids .=> sizes
 end
 
 """ Extract species from SBML """
 function build_spec_map(compnodes::Vector{EzXML.Node})
-    ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
+    # ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
+    ids = @. create_var(getindex(compnodes, "id"))
     inits = @. Float64(Meta.parse(getindex(compnodes, "initialAmount")))
-    comps = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "compartment"))))
+    comps = @. create_param(getindex(compnodes, "compartment"))
     ids .=> tuple.(inits,comps)
 end
 
@@ -136,17 +169,29 @@ function promotelocalparameters(doc::EzXML.Document)
         locallistsofparameters = [node for node in eachelement(kineticlaw) if occursin("Parameters",nodename(node))]
         locallistofparameters = [node for list in locallistsofparameters for node in eachelement(list)]            
         for par in locallistofparameters
+            _substitute_par!(kineticlaw, par["id"], reaction["id"])
             par["id"] = reaction["id"]*"_"*par["id"]
-            par["name"] = reaction["name"]*"_"*par["name"]
+            par["name"] = reaction["id"]*"_"*par["name"]
         end
     end
     doc
 end
 
+function _substitute_par!(node, par, prefix)
+    if typeof(node) != Nothing
+        for element in eachelement(node)
+            _substitute_par!(element, par, prefix)
+        end
+        if strip(node.name) == "ci" && strip(node.content) == par
+            node.content = prefix*"_"*par
+        end
+    end
+end
+
 """ ReactionSystem constructor """
 function ModelingToolkit.ReactionSystem(sbmlmodel::SbmlModel)
     rxs = [Reaction(reac...; use_only_rate=true) for reac in sbmlmodel.reactions]
-    t = Num(Variable{Float64}(:t))
+    t = Variable(:t)
     species = [spec.first for spec in sbmlmodel.species]
     pc = append!(sbmlmodel.parameters,sbmlmodel.compartments)
     params = [par.first for par in pc]
