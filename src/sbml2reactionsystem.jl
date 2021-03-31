@@ -86,6 +86,9 @@ function _getlistofspeciesreference(reaction::EzXML.Node,type)
     if length(listnodes) > 1
         @error("SBML files with reactions with more than one listOf$(type)s are not supported.")
     end
+    if length(listnodes) == 0
+        return (nothing, nothing)
+    end
     listnode = listnodes[1]
     spec = [create_var(getindex(node, "species")) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
     stoich = [Int(Meta.parse(getindex(node, "stoichiometry"))) for node in eachelement(listnode) if nodename(node) == "speciesReference"]
