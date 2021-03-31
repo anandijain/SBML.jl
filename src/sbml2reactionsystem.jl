@@ -125,11 +125,11 @@ function build_comp_map(compnodes::Vector{EzXML.Node})
 end
 
 """ Extract species from SBML """
-function build_spec_map(compnodes::Vector{EzXML.Node})
-    # ids = @. Num(Variable{Float64}(Symbol(getindex(compnodes, "id"))))
-    ids = @. create_var(getindex(compnodes, "id"))
-    inits = @. Float64(Meta.parse(getindex(compnodes, "initialAmount")))
-    comps = @. create_param(getindex(compnodes, "compartment"))
+function build_spec_map(specnodes::Vector{EzXML.Node})
+    # ids = @. Num(Variable{Float64}(Symbol(getindex(specnodes, "id"))))
+    ids = @. create_var(getindex(specnodes, "id"))
+    inits = @. Float64(Meta.parse(getindex(specnodes, "initialAmount")))
+    comps = @. create_param(getindex(specnodes, "compartment"))
     ids .=> tuple.(inits,comps)
 end
 
@@ -169,9 +169,11 @@ function promotelocalparameters(doc::EzXML.Document)
         locallistsofparameters = [node for node in eachelement(kineticlaw) if occursin("Parameters",nodename(node))]
         locallistofparameters = [node for list in locallistsofparameters for node in eachelement(list)]            
         for par in locallistofparameters
-            _substitute_par!(kineticlaw, par["id"], reaction["id"])
-            par["id"] = reaction["id"]*"_"*par["id"]
-            par["name"] = reaction["id"]*"_"*par["name"]
+            if !startswith(par["id"], reaction["id"]*"_")
+                _substitute_par!(kineticlaw, par["id"], reaction["id"])
+                par["id"] = reaction["id"]*"_"*par["id"]
+                par["name"] = reaction["id"]*"_"*par["name"]
+            end
         end
     end
     doc
@@ -182,7 +184,7 @@ function _substitute_par!(node, par, prefix)
         for element in eachelement(node)
             _substitute_par!(element, par, prefix)
         end
-        if strip(node.name) == "ci" && strip(node.content) == par && !startswith(strip(node.content), prefix*"_")
+        if strip(node.name) == "ci" && strip(node.content) == par  # && !startswith(strip(node.content), prefix*"_")
             node.content = prefix*"_"*par
         end
     end

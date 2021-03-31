@@ -1,3 +1,12 @@
+using SBML
+using Catalyst
+using EzXML
+using MathML
+using ModelingToolkit
+using OrdinaryDiffEq
+using Symbolics
+using Test
+
 DATA = joinpath(@__DIR__, "data")
 SBML_FILE = joinpath(DATA, "case01.xml")
 SBML_DOC = readxml(SBML_FILE)
@@ -120,9 +129,23 @@ println(typeof(e1))
 println(e1.lhs)
 println(e1.rhs)
 @test isequal(odesys.eqs, trueeqs)
+@test isequal(odesys.iv, t)
+@test isequal(odesys.states, [A, B])
+# isequal(Sym{ModelingToolkit.Parameter{Real},Nothing}[k1, ConvA_k2, comp1, comp1], [k1, ConvA_k2, comp1])
+@test isequal(odesys.ps, [k1, ConvA_k2, comp1])
+u0 = [A => 1., B => 0.]
+par = [k1 => 0.8, ConvA_k2 => 0.6, comp1 => 1.]
+@test isequal(odesys.defaults, Dict(append!(u0, par)))
 
 odesys = ODESystem(SBML_FILE)
 @test isequal(odesys.eqs, trueeqs)
+@test isequal(odesys.iv, t)
+@test isequal(odesys.states, [A, B])
+# isequal(Sym{ModelingToolkit.Parameter{Real},Nothing}[k1, ConvA_k2, comp1, comp1], [k1, ConvA_k2, comp1])
+@test isequal(odesys.ps, [k1, ConvA_k2, comp1])
+u0 = [A => 1., B => 0.]
+par = [k1 => 0.8, ConvA_k2 => 0.6, comp1 => 1.]
+@test isequal(odesys.defaults, Dict(append!(u0, par)))
 
 # test ODEProblem
 oprob = ODEProblem(model, [0., 10.])
