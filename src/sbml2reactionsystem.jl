@@ -1,7 +1,7 @@
 # This file uses MathML.jl and libsbml.jl to convert SBML models to ReactionSystems
 
 
-mutable struct SbmlModel
+struct SbmlModel
     # Basic Functionality
     parameters#::Array{Pair{Variable,Float64}}  # [parameter=>value, ...]
     compartments#::Array{Pair{Variable,Float64}}  # [nucleus=>1.0,cytoplasm=>2.0,...]
@@ -182,7 +182,7 @@ function _substitute_par!(node, par, prefix)
         for element in eachelement(node)
             _substitute_par!(element, par, prefix)
         end
-        if strip(node.name) == "ci" && strip(node.content) == par
+        if strip(node.name) == "ci" && strip(node.content) == par && !startswith(strip(node.content), prefix*"_")
             node.content = prefix*"_"*par
         end
     end
@@ -190,10 +190,10 @@ end
 
 """ ReactionSystem constructor """
 function ModelingToolkit.ReactionSystem(sbmlmodel::SbmlModel)
-    rxs = [Reaction(reac...; use_only_rate=true) for reac in sbmlmodel.reactions]
+    rxs = [Reaction(reac...; only_use_rate=true) for reac in sbmlmodel.reactions]
     t = Variable(:t)
     species = [spec.first for spec in sbmlmodel.species]
-    pc = append!(sbmlmodel.parameters,sbmlmodel.compartments)
+    pc = vcat(sbmlmodel.parameters,sbmlmodel.compartments)
     params = [par.first for par in pc]
     ReactionSystem(rxs,t,species,params)
 end
@@ -213,13 +213,42 @@ end
 """ ODESystem constructor """
 function ModelingToolkit.ODESystem(sbmlmodel::SbmlModel)
     rs = ReactionSystem(sbmlmodel)
-    odesys = convert(ODESystem, rs)
+    u0map = [s.first => s.second[1] for s in sbmlmodel.species]
+    parammap = vcat(sbmlmodel.parameters,sbmlmodel.compartments)
+    defaults = vcat(u0map, parammap)
+    println("System constructor")
+    println(u0map)
+    println(parammap)
+    println(defaults)
+    convert(ODESystem, rs, defaults=defaults)
+end
+
+""" ODESystem constructor """  # Todo: Why does this feed in a different SBML mdoel
+function ModelingToolkit.ODESystem(sbmldocument::EzXML.Document)
+    sbmlmodel = SbmlModel(sbmldocument)
+    ODESystem(sbmlmodel)
+end
+
+""" ODESystem constructor """
+function ModelingToolkit.ODESystem(sbmlfile::String)
+    sbmlmodel = SbmlModel(sbmlfile)
+    ODESystem(sbmlmodel)
 end
 
 """ ODEProblem constructor """
-function ModelingToolkit.ODEProblem(sbmlmodel::SbmlModel,tspan)
+function ModelingToolkit.ODEProblem(sbmlmodel::SbmlModel,tspan)  # Todo: add u0 and parameters argument
     odesys = ODESystem(sbmlmodel)
-    u0map = [s.first => s.second[1] for s in sbmlmodel.species]
-    parammap = append!(sbmlmodel.parameters,sbmlmodel.compartments)
-    ODEProblem(odesys, u0map, tspan, parammap)
+    ODEProblem(odesys, [], tspan)
+end
+
+""" ODEProblem constructor """
+function ModelingToolkit.ODEProblem(sbmldocument::EzXML.Document,tspan)  # Todo: add u0 and parameters argument
+    odesys = ODESystem(sbmldocument)
+    ODEProblem(odesys, [], tspan)
+end
+
+""" ODEProblem constructor """
+function ModelingToolkit.ODEProblem(sbmlfile::String,tspan)  # Todo: add u0 and parameters argument
+    odesys = ODESystem(sbmlfile)
+    ODEProblem(odesys, [], tspan)
 end
