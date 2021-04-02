@@ -1,5 +1,5 @@
 using Test, SBML, EzXML, MathML, Symbolics
-
+# TODO: ANAND delete all of this or make into readme for copasi feature comparison
 fn = "data/01193-sbml-l3v1.xml"
 d = sbml_to_sysinfo(fn)
 @test isa(d, Dict{String,Union{Nothing,Vector{EzXML.Node}}})
